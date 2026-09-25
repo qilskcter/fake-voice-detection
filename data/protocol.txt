@@ -1,2 +1,0 @@
-VN_001 real_01 - - bonafide
-VN_002 spoof_02 - - spoof
