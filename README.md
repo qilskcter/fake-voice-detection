@@ -1,6 +1,6 @@
-# Hệ thống phát hiện gian lận âm thanh deepfake
+# Hệ thống phân loại giọng nói: Live Voice vs Replay Attack
 
-Hệ thống dựa trên machine learning để phát hiện các bản ghi âm gian lận bằng kỹ thuật deep learning. Đây là bản triển khai proof-of-concept hoạt động của giải pháp được mô tả trong [bài viết của Hyperplane về phát hiện gian lận âm thanh deepfake](https://thehyperplane.substack.com/p/audio-deepfake-fraud-detection-system).
+Hệ thống dựa trên machine learning / deep learning để phân loại chính xác tín hiệu giọng nói đầu vào là **giọng người thật đang nói trực tiếp (Live Voice)** hay **giọng nói bị ghi âm và phát lại qua thiết bị loa (Replay Attack)**. Đây là bản triển khai proof-of-concept nâng cao dựa trên kiến trúc CRNN (ResNet18 + Bi-GRU + Attention).
 
 ![title](images/Audio%20deepfake%20fraud%20detection%20system.png)
 
@@ -16,12 +16,14 @@ Hệ thống dựa trên machine learning để phát hiện các bản ghi âm 
 
 ## Tổng quan
 
-Dự án triển khai một giải pháp dựa trên deep learning để phát hiện các bản ghi âm gian lận, nhằm giải quyết một thách thức quan trọng trong bối cảnh kỹ thuật số hiện nay, khi các hình thức gian lận bằng giọng nói ngày càng tinh vi. Theo các báo cáo gần đây, những vụ lừa đảo giả mạo bằng giọng nói nhân bản gây thiệt hại hơn 25 tỷ USD mỗi năm, trong khi công nghệ nhân bản giọng nói ngày càng dễ tiếp cận trên Internet.
+Dự án triển khai một giải pháp dựa trên deep learning để phân loại và bảo vệ hệ thống xác thực giọng nói trước các cuộc tấn công phát lại (Replay Attack):
+- **Real (Nhãn 1 - Live Voice)**: Giọng người thật phát biểu trực tiếp vào micro.
+- **Fake (Nhãn 0 - Replay Attack)**: Giọng nói đã bị thu âm trước đó và phát lại qua các thiết bị loa/tai nghe nhằm gian lận.
 
 Hệ thống sử dụng kết hợp:
-- Model ResNet18 đã được pre-train cùng Bi-GRU để phân loại
-- Mel spectrogram với masking để trích xuất đặc trưng ổn định
-- Các kỹ thuật tăng cường dữ liệu nâng cao, bao gồm dịch chuyển thời gian, thêm nhiễu, thay đổi cao độ và điều chỉnh gain
+- Model ResNet18 đã được pre-train cùng Bi-GRU và Attention Pooling để phân loại.
+- Mel spectrogram với masking để trích xuất đặc trưng acoustic.
+- Các kỹ thuật tăng cường dữ liệu nâng cao (Time Shift, Add Noise, Pitch Shift, Spectrogram Masking).
 - Bộ dữ liệu cân bằng kết hợp các mẫu từ ASV Spoof 2019 và các mẫu được tạo bằng Orpheus
 
 Dự án đạt precision và recall từ 95-97% trong việc phát hiện âm thanh gian lận, đặc biệt hữu ích cho các ngành như:
@@ -97,12 +99,12 @@ streamlit run src/main.py
 
 ### Training bằng audio cục bộ
 
-Đặt các file dùng để training vào các thư mục sau:
+Đặt các file dùng để training vào các thư mục tương ứng:
 
 ```
 data/
-├── fake/  # nhãn 0
-└── real/  # nhãn 1
+├── fake/  # Nhãn 0: Replay Attack (Giọng ghi âm phát lại qua loa)
+└── real/  # Nhãn 1: Live Voice (Giọng người thật nói trực tiếp)
 ```
 
 Mỗi thư mục phải chứa ít nhất hai file audio được hỗ trợ (`.wav`, `.flac`,
