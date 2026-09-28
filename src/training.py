@@ -1,11 +1,15 @@
 import argparse
+import os
 import random
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
-import torchaudio
 import torch
-from torch.utils.data import DataLoader, Dataset, Subset
+import torchaudio
 import torchaudio.transforms as transforms
+from torch.utils.data import DataLoader, Dataset, Subset
 
 from models import CRNNWithAttn
 
@@ -14,18 +18,67 @@ class AudioUtil:
 
     @staticmethod
     def open(audio_file):
-        sig, sr = torchaudio.load(audio_file)
-        return sig, sr
+        """Open audio file with multiple fallback backends (soundfile, librosa, ffmpeg).
+
+        Solves libsndfile errors with .m4a, .aac, .mp3 and other compressed formats.
+        """
+        try:
+            sig, sr = torchaudio.load(audio_file)
+            return sig, sr
+        except Exception:
+            pass
+
+        # Fallback 1: Try ffmpeg backend in torchaudio
+        try:
+            sig, sr = torchaudio.load(audio_file, backend="ffmpeg")
+            return sig, sr
+        except Exception:
+            pass
+
+        # Fallback 2: Try librosa if available
+        try:
+            import librosa
+            sig_np, sr = librosa.load(audio_file, sr=None, mono=False)
+            if sig_np.ndim == 1:
+                sig_np = sig_np[None, :]
+            return torch.from_numpy(sig_np).float(), sr
+        except Exception:
+            pass
+
+        # Fallback 3: Convert file using ffmpeg CLI to a temporary WAV file
+        ffmpeg_bin = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
+        if ffmpeg_bin and os.path.exists(ffmpeg_bin):
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:
+                tmp_wav_path = tmp_wav.name
+            try:
+                cmd = [
+                    ffmpeg_bin, "-y", "-i", str(audio_file),
+                    "-ar", "16000", "-ac", "2", "-f", "wav", tmp_wav_path
+                ]
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                sig, sr = torchaudio.load(tmp_wav_path)
+                return sig, sr
+            except Exception:
+                pass
+            finally:
+                if os.path.exists(tmp_wav_path):
+                    try:
+                        os.remove(tmp_wav_path)
+                    except OSError:
+                        pass
+
+        # Final attempt (will raise standard torchaudio error if all fallbacks fail)
+        return torchaudio.load(audio_file)
 
     @staticmethod
-    def rechannel(aud, new_channel):
+    def rechannel(aud, new_channel=1):
         sig, sr = aud
         if sig.shape[0] == new_channel:
             return aud
-        if new_channel == 1:
-            resig = sig[:1, :]
-        else:
-            resig = sig.repeat(new_channel, 1)
+        # Always average channels to mono to prevent stereo vs mono shortcut
+        resig = sig.mean(dim=0, keepdim=True)
+        if new_channel > 1:
+            resig = resig.repeat(new_channel, 1)
         return resig, sr
 
     @staticmethod
@@ -104,10 +157,10 @@ class SoundDS(Dataset):
     def __init__(self, data_path, label, mode="original"):
         self.label = label
         self.data_path = [str(p) for p in data_path]
-        self.duration = 4000
+        self.duration = 2500
         self.sr = 16000
-        self.channel = 2
-        self.shift_pct = 0.4
+        self.channel = 1
+        self.shift_pct = 0.2
         self.mode = mode
 
     def __len__(self):
@@ -132,10 +185,20 @@ class SoundDS(Dataset):
             aud = AudioUtil.time_shift(aud, self.shift_pct)
             aud = AudioUtil.add_noise(aud, noise_level=random.uniform(0.005, 0.05))
 
-        sgram = AudioUtil.spectro_gram(aud, n_mels=64, n_fft=780, hop_len=195)
+        sgram = AudioUtil.spectro_gram(aud, n_mels=128, n_fft=780, hop_len=195)
 
         if self.mode in ["spectro_augment", "combined"]:
             sgram = AudioUtil.spectro_augment(sgram, max_mask_pct=0.1, n_freq_masks=random.randint(1,3), n_time_masks=random.randint(1,3))
+
+        # Per-instance standardization + ImageNet normalization
+        spec_mean = sgram.mean()
+        spec_std = sgram.std() + 1e-6
+        sgram = (sgram - spec_mean) / spec_std
+
+        imagenet_mean = torch.tensor([0.485]).view(1, 1, 1)
+        imagenet_std = torch.tensor([0.229]).view(1, 1, 1)
+        sgram = (sgram * imagenet_std) + imagenet_mean
+        sgram = (sgram - imagenet_mean) / imagenet_std
 
         return sgram, class_id
 
@@ -146,8 +209,9 @@ AUDIO_EXTENSIONS = {".wav", ".flac", ".mp3", ".ogg", ".m4a"}
 def load_audio_paths(data_dir):
     """Load audio files from data/fake and data/real.
 
-    The model uses 0 for fake and 1 for real, matching the prediction
-    threshold in main.py.
+    Label mapping:
+    - 0: Fake (Replay Attack - Giọng nói bị ghi âm và phát lại qua thiết bị loa)
+    - 1: Real (Live Voice - Giọng người thật đang nói trực tiếp)
     """
     data_dir = Path(data_dir)
     paths = []
@@ -195,13 +259,14 @@ def split_indices(labels, validation_split=0.2, seed=42):
 def train(
     data_dir="data",
     model_path="models/best_model10.pth",
-    epochs=10,
+    epochs=15,
     batch_size=16,
     learning_rate=1e-4,
     validation_split=0.2,
     seed=42,
+    reset_model=False,
 ):
-    """Fine-tune CRNNWithAttn using files in data/fake and data/real."""
+    """Fine-tune CRNNWithAttn to classify Live Voice (Real: 1) vs Replay Attack (Fake: 0)."""
     torch.manual_seed(seed)
     paths, labels = load_audio_paths(data_dir)
     dataset = SoundDS(paths, labels, mode="combined")
@@ -209,17 +274,35 @@ def train(
     train_loader = DataLoader(Subset(dataset, train_indices), batch_size=batch_size, shuffle=True)
     validation_loader = DataLoader(Subset(dataset, validation_indices), batch_size=batch_size)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+
+    print(f"🖥️ Using hardware accelerator: {device.type.upper()}")
     checkpoint = Path(model_path)
-    model = CRNNWithAttn(pretrained=not checkpoint.exists()).to(device)
-    if checkpoint.exists():
-        model.load_state_dict(torch.load(checkpoint, map_location=device, weights_only=True))
-        print(f"Loaded existing model: {checkpoint}")
+    use_existing = checkpoint.exists() and not reset_model
+
+    model = CRNNWithAttn(pretrained=not use_existing).to(device)
+    if use_existing:
+        try:
+            model.load_state_dict(torch.load(checkpoint, map_location=device, weights_only=True))
+            print(f"Loaded existing model checkpoint: {checkpoint}")
+        except Exception as e:
+            print(f"Notice: Loading existing checkpoint failed ({e}). Initializing with clean pre-trained weights.")
+            model = CRNNWithAttn(pretrained=True).to(device)
+    else:
+        print("Initializing model with clean ImageNet pre-trained ResNet18 backbone...")
 
     criterion = torch.nn.BCEWithLogitsLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     best_accuracy = -1.0
     checkpoint.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"Starting training for {epochs} epochs on {len(train_indices)} train samples, {len(validation_indices)} val samples...")
 
     for epoch in range(epochs):
         model.train()
@@ -234,34 +317,48 @@ def train(
             train_loss += loss.item() * features.size(0)
 
         model.eval()
-        correct = 0
-        total = 0
+        tp, fp, fn, tn = 0, 0, 0, 0
         with torch.no_grad():
             for features, target in validation_loader:
-                predictions = torch.sigmoid(model(features.to(device))) >= 0.5
-                correct += (predictions.cpu().squeeze(1) == target.bool()).sum().item()
-                total += target.numel()
+                preds = (torch.sigmoid(model(features.to(device))) >= 0.5).squeeze(1).cpu()
+                target_bool = target.bool()
+                tp += ((preds == 1) & (target_bool == 1)).sum().item()
+                fp += ((preds == 1) & (target_bool == 0)).sum().item()
+                fn += ((preds == 0) & (target_bool == 1)).sum().item()
+                tn += ((preds == 0) & (target_bool == 0)).sum().item()
 
-        validation_accuracy = correct / total if total else 0.0
+        total = tp + fp + fn + tn
+        acc = (tp + tn) / total if total else 0.0
+        precision = tp / (tp + fp) if (tp + fp) else 0.0
+        recall = tp / (tp + fn) if (tp + fn) else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+
         average_loss = train_loss / len(train_indices)
+        scheduler.step()
+
         print(
-            f"Epoch {epoch + 1}/{epochs} - "
-            f"loss: {average_loss:.4f} - validation accuracy: {validation_accuracy:.4f}"
+            f"Epoch {epoch + 1:02d}/{epochs:02d} | "
+            f"Loss: {average_loss:.4f} | "
+            f"Val Acc: {acc:.2%} | "
+            f"Precision: {precision:.2%} | "
+            f"Recall: {recall:.2%} | "
+            f"F1-Score: {f1:.4f}"
         )
 
-        if validation_accuracy > best_accuracy:
-            best_accuracy = validation_accuracy
+        if acc > best_accuracy:
+            best_accuracy = acc
             torch.save(model.state_dict(), checkpoint)
-            print(f"Saved best model to {checkpoint}")
+            print(f"  --> Saved best model checkpoint (Val Acc: {acc:.2%}) to {checkpoint}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train the fake/real audio classifier")
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--model-path", default="models/best_model10.pth")
-    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--epochs", type=int, default=15)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
     parser.add_argument("--validation-split", type=float, default=0.2)
+    parser.add_argument("--reset-model", action="store_true", help="Start training from clean pre-trained ResNet weights")
     args = parser.parse_args()
     train(**vars(args))
