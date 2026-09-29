@@ -192,7 +192,7 @@ Khởi động ứng dụng phân loại trực quan trên trình duyệt:
 .venv/bin/streamlit run src/main.py
 ```
 
-Ứng dụng sẽ tự động mở giao diện tại địa chỉ `http://localhost:8501`. Người dùng có thể kéo thả bất kỳ file âm thanh nào (`.wav`, `.flac`, `.mp3`, `.m4a`, `.aac`) để xem ngay kết quả phân loại và điểm độ tin cậy.
+Ứng dụng sẽ tự động mở giao diện tại địa chỉ `http://localhost:8501`. Người dùng có thể **ghi âm trực tiếp từ Micro** hoặc kéo thả file âm thanh (`.wav`, `.flac`, `.mp3`, `.m4a`, `.aac`, `.webm`) để xem ngay kết quả phân loại và điểm độ tin cậy.
 
 ---
 
