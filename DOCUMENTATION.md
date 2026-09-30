@@ -239,8 +239,8 @@ Bao gồm: `Linear(256, 128)` $\rightarrow$ `BatchNorm1d(128)` $\rightarrow$ `Re
 
 ```bash
 # Clone repository
-git clone https://github.com/mlvanguards/fraud-audio-detection.git
-cd fraud-audio-detection
+git clone https://github.com/qilskcter/phu-khac-anh-dep-trai.git
+cd phu-khac-anh-dep-trai
 
 # Đồng bộ hóa môi trường ảo bằng uv
 uv sync
@@ -270,10 +270,10 @@ Truy cập giao diện tại `http://localhost:8501`.
 
 ```bash
 # Build Docker image
-docker build -t fraud-audio-detection .
+docker build -t phu-khac-anh-dep-trai .
 
 # Run Docker container
-docker run -p 8501:8501 --rm fraud-audio-detection
+docker run -p 8501:8501 --rm phu-khac-anh-dep-trai
 ```
 
 ---

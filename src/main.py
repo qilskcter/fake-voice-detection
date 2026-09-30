@@ -134,10 +134,23 @@ if audio_source is not None:
         if hasattr(audio_source, "seek"):
             audio_source.seek(0)
 
+# Infer proper MIME type & extension
+raw_mime = getattr(audio_source, "type", None) if audio_source is not None else None
+file_ext = "." + file_name.split(".")[-1].lower() if "." in file_name else ".wav"
+
+if raw_mime:
+    if "webm" in raw_mime.lower():
+        file_ext = ".webm"
+    elif "ogg" in raw_mime.lower():
+        file_ext = ".ogg"
+    elif "mp3" in raw_mime.lower():
+        file_ext = ".mp3"
+    elif "wav" in raw_mime.lower():
+        file_ext = ".wav"
+
 # Process audio file for inference
 specs, total_duration = None, 0.0
 if audio_bytes is not None and len(audio_bytes) > 0:
-    file_ext = "." + file_name.split(".")[-1].lower() if "." in file_name else ".wav"
     with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
         tmp_file.write(audio_bytes)
         tmp_file_path = tmp_file.name
@@ -158,7 +171,6 @@ with col_right:
     if audio_bytes is None or len(audio_bytes) == 0:
         st.info("👈 Hãy chọn Ghi âm trực tiếp hoặc Tải file lên ở cột bên trái để bắt đầu phân tích.")
     else:
-        file_ext = "." + file_name.split(".")[-1].lower() if "." in file_name else ".wav"
         mime_type_map = {
             ".m4a": "audio/mp4",
             ".mp3": "audio/mp3",
@@ -168,7 +180,7 @@ with col_right:
             ".aac": "audio/aac",
             ".webm": "audio/webm",
         }
-        audio_format = mime_type_map.get(file_ext, "audio/wav")
+        audio_format = raw_mime if raw_mime else mime_type_map.get(file_ext, "audio/wav")
         
         st.audio(audio_bytes, format=audio_format)
         st.caption(f"📁 Tệp âm thanh: `{file_name}` ({len(audio_bytes) / 1024:.1f} KB)")
