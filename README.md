@@ -165,17 +165,19 @@ Input Mel-Spectrogram: [B, 1, 128, T]
 
 ### 1. Điều Kiện Tiên Quyết
 - **Python:** `3.11` trở lên.
-- **Quản lý gói:** `uv` (khuyên dùng) hoặc `pip`.
-- **FFmpeg:** Được cài đặt trên hệ thống (để hỗ trợ xử lý file âm thanh nén `.m4a`, `.aac`).
+- **Quản lý môi trường:** `uv` (khuyên dùng) hoặc `pip`.
+- **FFmpeg:** Được cài đặt trên hệ thống (để hỗ trợ xử lý tất cả các định dạng file nén `.m4a`, `.aac`, `.mp3`, `.ogg`, `.webm`).
 
-### 2. Cài Đặt Môi Trường
+---
+
+### 2. Thiết Lập Môi Trường (Setup Environment)
 
 ```bash
 # Clone repository
-git clone https://github.com/mlvanguards/fraud-audio-detection.git
-cd fraud-audio-detection
+git clone https://github.com/qilskcter/phu-khac-anh-dep-trai.git
+cd phu-khac-anh-dep-trai
 
-# Đồng bộ hóa môi trường ảo bằng uv
+# Đồng bộ môi trường & dependencies bằng uv
 uv sync
 
 # Kích hoạt môi trường ảo
@@ -184,7 +186,7 @@ source .venv/bin/activate
 
 ---
 
-### 3. Chạy Ứng Dụng Web UI (Streamlit)
+### 3. Chạy Ứng Dụng Web UI (Streamlit Web App)
 
 Khởi động ứng dụng phân loại trực quan trên trình duyệt:
 
@@ -192,13 +194,13 @@ Khởi động ứng dụng phân loại trực quan trên trình duyệt:
 .venv/bin/streamlit run src/main.py
 ```
 
-Ứng dụng sẽ tự động mở giao diện tại địa chỉ `http://localhost:8501`. Người dùng có thể kéo thả bất kỳ file âm thanh nào (`.wav`, `.flac`, `.mp3`, `.m4a`, `.aac`) để xem ngay kết quả phân loại và điểm độ tin cậy.
+Ứng dụng sẽ tự động mở giao diện tại địa chỉ `http://localhost:8501`. Người dùng có thể **Ghi âm trực tiếp từ Micro** hoặc **Tải file âm thanh lên** (`.wav`, `.flac`, `.mp3`, `.m4a`, `.aac`, `.webm`) để xem ngay kết quả phân loại và các thẻ thống kê độ tin cậy.
 
 ---
 
-### 4. Huấn Luyện Lại Mô Hình (Training)
+### 4. Huấn Luyện Lại Mô Hình (Training Pipeline)
 
-Để chạy huấn luyện mô hình với dữ liệu trong thư mục `data/`:
+Để chạy huấn luyện lại mô hình với tập dữ liệu trong thư mục `data/`:
 
 ```bash
 # Huấn luyện fine-tune tiếp tục từ checkpoint hiện tại
@@ -207,47 +209,50 @@ Khởi động ứng dụng phân loại trực quan trên trình duyệt:
 # Huấn luyện mới từ đầu (Reset trọng số sạch từ ImageNet ResNet18)
 .venv/bin/python src/training.py --epochs 20 --reset-model
 
-# Tùy chỉnh tham số huấn luyện
+# Tùy chỉnh các tham số huấn luyện (Custom arguments)
 .venv/bin/python src/training.py --data-dir data --model-path models/my_model.pth --epochs 15 --batch-size 16 --learning-rate 0.0001
 ```
 
 ---
 
-### 5. Triển Khai Với Docker
+### 5. Triển Khai Container (Docker Deployment)
 
 Build và chạy ứng dụng bằng Docker Container:
 
 ```bash
 # Build Docker image
-docker build -t fraud-audio-detection .
+docker build -t phu-khac-anh-dep-trai .
 
 # Chạy Docker container
-docker run -p 8501:8501 --rm fraud-audio-detection
+docker run -p 8501:8501 --rm phu-khac-anh-dep-trai
 ```
 
 ---
 
-## 📁 Cấu Trúc Thư Mục Dự Án
+## 📁 Cấu Trúc Thư Mục Dự Án (Project File Tree)
 
 ```
 phu-khac-anh-dep-trai/
-├── data/                      # Thư mục dữ liệu huấn luyện
+├── data/                      # Thư mục dữ liệu huấn luyện (audio FLAC)
 │   ├── fake/                  # Nhãn 0: Giọng ghi âm phát lại qua loa (Replay Attack)
 │   └── real/                  # Nhãn 1: Giọng người thật nói trực tiếp (Live Voice)
-├── models/                    # Lưu trữ các file trọng số mô hình (.pth)
-│   └── best_model10.pth       # Model checkpoint đạt kết quả cao nhất
-├── convert-data/              # Công cụ hỗ trợ chuyển đổi & tiền xử lý âm thanh
-│   └── convert.py
-├── src/                       # Mã nguồn chính của dự án
-│   ├── main.py                # Giao diện Web Streamlit UI & Pipeline suy luận (Inference)
+├── models/                    # Thư mục lưu trữ trọng số mô hình (.pth)
+│   └── best_model10.pth       # Model checkpoint đạt kết quả cao nhất (100% Val Acc)
+├── convert-data/              # Thư mục công cụ chuyển đổi & chuẩn hóa dữ liệu
+│   └── convert.py             # Script hỗ trợ convert âm thanh
+├── src/                       # Mã nguồn ứng dụng chính
+│   ├── main.py                # Ứng dụng Streamlit Web & Pipeline suy luận (Inference)
 │   ├── models.py              # Định nghĩa kiến trúc CRNNWithAttn & Attention Pooling
 │   ├── training.py            # Pipeline huấn luyện, Data Augmentation & Evaluation
-│   └── util.py                # Helper utilities
-├── images/                    # Sơ đồ & hình ảnh tài liệu
+│   ├── ui_components.py       # Module đóng gói các hàm render HTML/Streamlit components
+│   ├── styles.css             # Stylesheet CSS tùy chỉnh giao diện ứng dụng
+│   └── util.py                # Utilities helper module
+├── images/                    # Hình ảnh sơ đồ kiến trúc & minh họa tài liệu
+├── DOCUMENTATION.md           # Tài liệu kỹ thuật chuyên sâu về toán học & mã nguồn
 ├── Dockerfile                 # File cấu hình đóng gói Docker Container
 ├── Makefile                   # Tự động hóa các lệnh build & test
 ├── pyproject.toml             # Cấu hình project dependencies (uv)
-└── README.md                  # Báo cáo chi tiết & tài liệu hướng dẫn
+└── README.md                  # Tài liệu tổng quan & hướng dẫn sử dụng
 ```
 
 ---

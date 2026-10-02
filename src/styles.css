@@ -1,0 +1,110 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+.hero-banner {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+    border-radius: 20px;
+    padding: 32px 36px;
+    color: #ffffff;
+    box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.25);
+    margin-bottom: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hero-title {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+    background: linear-gradient(90deg, #38bdf8 0%, #818cf8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.hero-subtitle {
+    font-size: 16px;
+    color: #94a3b8;
+    max-width: 750px;
+    line-height: 1.5;
+}
+
+.result-card-real {
+    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    border: 2px solid #10b981;
+    border-radius: 18px;
+    padding: 28px;
+    text-align: center;
+    box-shadow: 0 8px 20px -4px rgba(16, 185, 129, 0.15);
+    margin-bottom: 24px;
+}
+
+.result-card-fake {
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+    border: 2px solid #ef4444;
+    border-radius: 18px;
+    padding: 28px;
+    text-align: center;
+    box-shadow: 0 8px 20px -4px rgba(239, 68, 68, 0.15);
+    margin-bottom: 24px;
+}
+
+.result-badge-real {
+    font-size: 28px;
+    font-weight: 800;
+    color: #065f46;
+    margin-bottom: 6px;
+}
+
+.result-badge-fake {
+    font-size: 28px;
+    font-weight: 800;
+    color: #991b1b;
+    margin-bottom: 6px;
+}
+
+.result-desc {
+    font-size: 15px;
+    color: #4b5563;
+    font-weight: 400;
+}
+
+.metric-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 18px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.metric-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.metric-label {
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 500;
+    margin-top: 4px;
+}
+
+.sidebar-section {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 14px 16px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 16px;
+}
