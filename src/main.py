@@ -29,14 +29,42 @@ model = load_model()
 imagenet_mean = torch.tensor([0.485]).view(1, 1, 1, 1).to(device)
 imagenet_std = torch.tensor([0.229]).view(1, 1, 1, 1).to(device)
 
-# Audio preprocessing
+# Audio preprocessing (Sliding Window for long audio)
 def preprocess(file_path):
-    from training import SoundDS
-    # Use SoundDS just like during evaluation
-    # Label doesn't matter for inference, mode 'original' applies no augmentation
-    ds = SoundDS([file_path], [0], mode="original")
-    sgram, _ = ds[0]
-    return [sgram]
+    from training import AudioUtil
+    
+    aud = AudioUtil.open(file_path)
+    aud = AudioUtil.resample(aud, 16000)
+    aud = AudioUtil.rechannel(aud, 1)
+
+    sig, sr = aud
+    max_len = 40000  # 2.5 seconds at 16kHz
+    
+    segments = []
+    if sig.shape[1] <= max_len:
+        padded_aud = AudioUtil.pad_trunc(aud, 2500)
+        segments.append(padded_aud)
+    else:
+        step = max_len // 2  # 50% overlap
+        for start in range(0, sig.shape[1] - max_len + 1, step):
+            chunk = sig[:, start:start + max_len]
+            segments.append((chunk, sr))
+        
+        # Handle the last remaining part if any
+        if (sig.shape[1] - max_len) % step != 0:
+            chunk = sig[:, -max_len:]
+            segments.append((chunk, sr))
+
+    specs = []
+    for seg in segments:
+        sgram = AudioUtil.spectro_gram(seg, n_mels=128, n_fft=780, hop_len=195)
+        # Per-instance standardization (exactly matching training.py)
+        spec_mean = sgram.mean()
+        spec_std = sgram.std() + 1e-6
+        sgram = (sgram - spec_mean) / spec_std
+        specs.append(sgram)
+        
+    return specs
 
 # Inject custom CSS styles
 st.markdown("""
