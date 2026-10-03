@@ -10,26 +10,10 @@ def load_css(css_file_path: str = "src/styles.css"):
 def render_sidebar_dashboard(device_name: str):
     """Render sidebar system info dashboard."""
     with st.sidebar:
-        st.markdown("### 🛡️ System Dashboard")
+        st.markdown("### System Dashboard")
         st.caption("Anti-Fraud Voice Authentication System")
-        
-        st.markdown("---")
-        
-        st.markdown("##### 🖥️ Hardware Accelerator")
-        st.success(f"⚡ **{device_name}**")
-        
-        st.markdown("##### 🧠 Model Architecture")
-        st.info("**CRNNWithAttn**\n- ResNet18 Backbone\n- Bi-GRU (256d)\n- 4-Head Attention Pooling")
-        
-        st.markdown("##### 📊 Model Performance")
-        col_sb1, col_sb2 = st.columns(2)
-        with col_sb1:
-            st.metric("Validation Acc", "100.0%", delta="Best Epoch 12")
-        with col_sb2:
-            st.metric("F1-Score", "1.000", delta="Optimum")
-            
-        st.markdown("---")
-        st.markdown("##### 💡 Recording Guidelines")
+
+        st.markdown("##### Hướng dẫn sử dụng:")
         st.markdown("""
         - **Thời lượng:** 2–4 giây âm thanh rõ ràng.
         - **Khoảng cách:** Đặt miệng cách micro 15–20cm.
@@ -40,9 +24,9 @@ def render_hero_banner():
     """Render top application hero banner."""
     st.markdown("""
         <div class="hero-banner">
-            <div class="hero-title">🛡️ Voice Biometrics Fraud Detection</div>
+            <div class="hero-title"> Voice Biometrics Fraud Detection</div>
             <div class="hero-subtitle">
-                Hệ thống AI phân loại sinh trắc học giọng nói nâng cao: Phát hiện và bảo vệ trước các cuộc tấn công ghi âm phát lại (<b>Replay Attack</b>) bằng kiến trúc ResNet18 + Bi-GRU + Attention.
+                Hệ thống AI phân loại sinh trắc học giọng nói nâng cao: Phát hiện và bảo vệ trước các cuộc tấn công ghi âm phát lại (<b>Replay Attack</b>).
             </div>
         </div>
     """, unsafe_allow_html=True)

@@ -281,7 +281,7 @@ def train(
     else:
         device = torch.device("cpu")
 
-    print(f"🖥️ Using hardware accelerator: {device.type.upper()}")
+    print(f"Using hardware accelerator: {device.type.upper()}")
     checkpoint = Path(model_path)
     use_existing = checkpoint.exists() and not reset_model
 
