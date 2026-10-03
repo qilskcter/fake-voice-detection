@@ -239,8 +239,8 @@ Bao gồm: `Linear(256, 128)` $\rightarrow$ `BatchNorm1d(128)` $\rightarrow$ `Re
 
 ```bash
 # Clone repository
-git clone https://github.com/qilskcter/phu-khac-anh-dep-trai.git
-cd phu-khac-anh-dep-trai
+git clone https://github.com/qilskcter/fake-voice-detection.git
+cd fake-voice-detection
 
 # Đồng bộ hóa môi trường ảo bằng uv
 uv sync
@@ -270,10 +270,10 @@ Truy cập giao diện tại `http://localhost:8501`.
 
 ```bash
 # Build Docker image
-docker build -t phu-khac-anh-dep-trai .
+docker build -t fake-voice-detection .
 
 # Run Docker container
-docker run -p 8501:8501 --rm phu-khac-anh-dep-trai
+docker run -p 8501:8501 --rm fake-voice-detection
 ```
 
 ---

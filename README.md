@@ -122,13 +122,13 @@ Mô hình đã được huấn luyện trên phần cứng **Apple Silicon MPS (
 | **20** | 0.1087 | 94.44% | 100.00% | 88.89% | 0.9412 | Hoàn thành huấn luyện |
 
 > [!IMPORTANT]
-> Mô hình đã đạt **Validation Accuracy 100%**, **Precision 100%**, **Recall 100%** và **F1-Score 1.0000** tại Epoch 12 và lưu trọng số tối ưu nhất vào file [models/best_model10.pth](file:///Users/nguyendinhkhanh/Documents/GitHub/phu-khac-anh-dep-trai/models/best_model10.pth).
+> Mô hình đã đạt **Validation Accuracy 100%**, **Precision 100%**, **Recall 100%** và **F1-Score 1.0000** tại Epoch 12 và lưu trọng số tối ưu nhất vào file [models/best_model10.pth](file:///Users/nguyendinhkhanh/Documents/GitHub/fake-voice-detection/models/best_model10.pth).
 
 ---
 
 ## 🏗️ Cấu Trúc Kiến Trúc Mạng (CRNN + Attention)
 
-Mô hình [`CRNNWithAttn`](file:///Users/nguyendinhkhanh/Documents/GitHub/phu-khac-anh-dep-trai/src/models.py#L34-L86) bao gồm 4 khối chính:
+Mô hình [`CRNNWithAttn`](file:///Users/nguyendinhkhanh/Documents/GitHub/fake-voice-detection/src/models.py#L34-L86) bao gồm 4 khối chính:
 
 ```
 Input Mel-Spectrogram: [B, 1, 128, T]
@@ -174,8 +174,8 @@ Input Mel-Spectrogram: [B, 1, 128, T]
 
 ```bash
 # Clone repository
-git clone https://github.com/qilskcter/phu-khac-anh-dep-trai.git
-cd phu-khac-anh-dep-trai
+git clone https://github.com/qilskcter/fake-voice-detection.git
+cd fake-voice-detection
 
 # Đồng bộ môi trường & dependencies bằng uv
 uv sync
@@ -221,10 +221,10 @@ Build và chạy ứng dụng bằng Docker Container:
 
 ```bash
 # Build Docker image
-docker build -t phu-khac-anh-dep-trai .
+docker build -t fake-voice-detection .
 
 # Chạy Docker container
-docker run -p 8501:8501 --rm phu-khac-anh-dep-trai
+docker run -p 8501:8501 --rm fake-voice-detection
 ```
 
 ---
@@ -232,7 +232,7 @@ docker run -p 8501:8501 --rm phu-khac-anh-dep-trai
 ## 📁 Cấu Trúc Thư Mục Dự Án (Project File Tree)
 
 ```
-phu-khac-anh-dep-trai/
+fake-voice-detection/
 ├── data/                      # Thư mục dữ liệu huấn luyện (audio FLAC)
 │   ├── fake/                  # Nhãn 0: Giọng ghi âm phát lại qua loa (Replay Attack)
 │   └── real/                  # Nhãn 1: Giọng người thật nói trực tiếp (Live Voice)
