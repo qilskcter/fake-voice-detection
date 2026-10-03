@@ -104,8 +104,8 @@ audio_source = None
 file_name = "audio.wav"
 
 with col_left:
-    st.markdown("#### 📥 Chọn Phương Thức Thu Âm")
-    tab1, tab2 = st.tabs(["🎙️ Ghi Âm Trực Tiếp", "📁 Tải File Âm Thanh"])
+    st.markdown("#### Chọn Phương Thức Thu Âm")
+    tab1, tab2 = st.tabs(["Ghi Âm Trực Tiếp", "Tải File Âm Thanh"])
     
     with tab1:
         st.write("Nhấn vào biểu tượng Micro bên dưới để ghi âm câu thoại:")
@@ -167,9 +167,9 @@ if audio_bytes is not None and len(audio_bytes) > 0:
                 pass
 
 with col_right:
-    st.markdown("#### 🎧 Trình Phát Âm Thanh")
+    st.markdown("#### Trình Phát Âm Thanh")
     if audio_bytes is None or len(audio_bytes) == 0:
-        st.info("👈 Hãy chọn Ghi âm trực tiếp hoặc Tải file lên ở cột bên trái để bắt đầu phân tích.")
+        st.info("Hãy chọn Ghi âm trực tiếp hoặc Tải file lên ở cột bên trái để bắt đầu phân tích.")
     else:
         mime_type_map = {
             ".m4a": "audio/mp4",
@@ -183,12 +183,12 @@ with col_right:
         audio_format = raw_mime if raw_mime else mime_type_map.get(file_ext, "audio/wav")
         
         st.audio(audio_bytes, format=audio_format)
-        st.caption(f"📁 Tệp âm thanh: `{file_name}` ({len(audio_bytes) / 1024:.1f} KB)")
+        st.caption(f"Tệp âm thanh: `{file_name}` ({len(audio_bytes) / 1024:.1f} KB)")
 
 # --- INFERENCE & RESULTS SECTION ---
 if specs is not None and len(specs) > 0:
     st.markdown("---")
-    st.markdown("### 📈 Kết Quả Phân Tích Giọng Nói")
+    st.markdown("### Kết Quả Phân Tích Giọng Nói")
     
     try:
         scores = []
@@ -219,15 +219,15 @@ if specs is not None and len(specs) > 0:
         with m_col3:
             render_metric_card(f"{total_duration:.1f}s", f"Thời Lượng ({len(specs)} Phân Đoạn)")
 
-        # Live vs Fake Gauge Bar
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("##### 🎯 Biểu Đồ Ngưỡng Ra Quyết Định (Decision Threshold: 50.0%)")
-        st.progress(min(max(mean_score, 0.0), 1.0))
+        # # Live vs Fake Gauge Bar
+        # st.markdown("<br>", unsafe_allow_html=True)
+        # st.markdown("##### 🎯 Biểu Đồ Ngưỡng Ra Quyết Định (Decision Threshold: 50.0%)")
+        # st.progress(min(max(mean_score, 0.0), 1.0))
         
-        # Expander for Segment Details
-        with st.expander("🔍 Xem chi tiết điểm số từng phân đoạn (Segment Analysis)"):
-            for idx, sc in enumerate(scores):
-                st.write(f"- Phân đoạn {idx + 1} (2.5s): Live Score = **{sc:.2%}** | Verdict = {'🟢 Real' if sc >= 0.5 else '🔴 Fake'}")
+        # # Expander for Segment Details
+        # with st.expander("🔍 Xem chi tiết điểm số từng phân đoạn (Segment Analysis)"):
+        #     for idx, sc in enumerate(scores):
+        #         st.write(f"- Phân đoạn {idx + 1} (2.5s): Live Score = **{sc:.2%}** | Verdict = {'🟢 Real' if sc >= 0.5 else '🔴 Fake'}")
 
     except Exception as e:
         st.error(f"Lỗi hệ thống khi dự đoán: {str(e)}")
