@@ -172,7 +172,7 @@ if audio_bytes is not None and len(audio_bytes) > 0:
     loading_placeholder = st.empty()
     
     with loading_placeholder.container():
-        st.markdown("##### ⏳ Tiến Trình Xử Lý & Phân Tích")
+        st.markdown("##### Tiến Trình Xử Lý & Phân Tích")
         progress_bar = st.progress(10, text="Đang tiếp nhận và kiểm tra tệp âm thanh...")
     
     time.sleep(0.15)
@@ -217,7 +217,7 @@ if audio_bytes is not None and len(audio_bytes) > 0:
                     scores.append(score)
                 time.sleep(0.05)
 
-            progress_bar.progress(100, text="✅ Hoàn tất phân tích dữ liệu!")
+            progress_bar.progress(100, text="Hoàn tất phân tích dữ liệu!")
             time.sleep(0.35)
             loading_placeholder.empty()
 
