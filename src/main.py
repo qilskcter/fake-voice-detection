@@ -1,5 +1,6 @@
 import os
 import tempfile
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -148,24 +149,6 @@ if raw_mime:
     elif "wav" in raw_mime.lower():
         file_ext = ".wav"
 
-# Process audio file for inference
-specs, total_duration = None, 0.0
-if audio_bytes is not None and len(audio_bytes) > 0:
-    with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
-        tmp_file.write(audio_bytes)
-        tmp_file_path = tmp_file.name
-
-    try:
-        specs, total_duration = process_audio_file(tmp_file_path)
-    except Exception as e:
-        st.error(f"Lỗi khi đọc định dạng âm thanh: {str(e)}")
-    finally:
-        if os.path.exists(tmp_file_path):
-            try:
-                os.remove(tmp_file_path)
-            except OSError:
-                pass
-
 with col_right:
     st.markdown("#### Trình Phát Âm Thanh")
     if audio_bytes is None or len(audio_bytes) == 0:
@@ -185,49 +168,84 @@ with col_right:
         st.audio(audio_bytes, format=audio_format)
         st.caption(f"Tệp âm thanh: `{file_name}` ({len(audio_bytes) / 1024:.1f} KB)")
 
-# --- INFERENCE & RESULTS SECTION ---
-if specs is not None and len(specs) > 0:
+# --- AUDIO PROCESSING & INFERENCE SECTION ---
+if audio_bytes is not None and len(audio_bytes) > 0:
     st.markdown("---")
-    st.markdown("### Kết Quả Phân Tích Giọng Nói")
     
+    # Placeholder for the processing loading bar
+    loading_placeholder = st.empty()
+    
+    with loading_placeholder.container():
+        st.markdown("##### ⏳ Tiến Trình Xử Lý & Phân Tích")
+        progress_bar = st.progress(10, text="Đang tiếp nhận và kiểm tra tệp âm thanh...")
+    
+    time.sleep(0.15)
+    
+    # Process audio file for inference
+    specs, total_duration = None, 0.0
+    with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
+        tmp_file.write(audio_bytes)
+        tmp_file_path = tmp_file.name
+
     try:
-        scores = []
-        for spec in specs:
-            input_tensor = spec.unsqueeze(0).to(device)
-            input_tensor = (input_tensor * imagenet_std) + imagenet_mean
-            input_tensor = (input_tensor - imagenet_mean) / imagenet_std
-            
-            with torch.no_grad():
-                out = model(input_tensor)
-                score = torch.sigmoid(out).item()
-                scores.append(score)
-
-        mean_score = sum(scores) / len(scores) if scores else 0.0
-        fake_score = 1.0 - mean_score
-        
-        # Result Banner Render
-        render_result_banner(mean_score)
-
-        # 3 Detailed Metrics Cards
-        m_col1, m_col2, m_col3 = st.columns(3)
-        with m_col1:
-            render_metric_card(f"{mean_score:.2%}", "Xác Suất Live Voice (Real)", value_color="#10b981")
-            
-        with m_col2:
-            render_metric_card(f"{fake_score:.2%}", "Xác Suất Replay Attack (Fake)", value_color="#ef4444")
-            
-        with m_col3:
-            render_metric_card(f"{total_duration:.1f}s", f"Thời Lượng ({len(specs)} Phân Đoạn)")
-
-        # # Live vs Fake Gauge Bar
-        # st.markdown("<br>", unsafe_allow_html=True)
-        # st.markdown("##### 🎯 Biểu Đồ Ngưỡng Ra Quyết Định (Decision Threshold: 50.0%)")
-        # st.progress(min(max(mean_score, 0.0), 1.0))
-        
-        # # Expander for Segment Details
-        # with st.expander("🔍 Xem chi tiết điểm số từng phân đoạn (Segment Analysis)"):
-        #     for idx, sc in enumerate(scores):
-        #         st.write(f"- Phân đoạn {idx + 1} (2.5s): Live Score = **{sc:.2%}** | Verdict = {'🟢 Real' if sc >= 0.5 else '🔴 Fake'}")
-
+        progress_bar.progress(35, text="Đang tiền xử lý tín hiệu và chuẩn hóa độ dài...")
+        time.sleep(0.15)
+        specs, total_duration = process_audio_file(tmp_file_path)
+        progress_bar.progress(55, text="Đang trích xuất đặc trưng âm học (Mel-Spectrogram)...")
+        time.sleep(0.15)
     except Exception as e:
-        st.error(f"Lỗi hệ thống khi dự đoán: {str(e)}")
+        loading_placeholder.empty()
+        st.error(f"Lỗi khi đọc định dạng âm thanh: {str(e)}")
+    finally:
+        if os.path.exists(tmp_file_path):
+            try:
+                os.remove(tmp_file_path)
+            except OSError:
+                pass
+
+    if specs is not None and len(specs) > 0:
+        try:
+            scores = []
+            total_specs = len(specs)
+            for idx, spec in enumerate(specs):
+                pct = 55 + int(35 * (idx + 1) / total_specs)
+                progress_bar.progress(
+                    pct,
+                    text=f"Đang phân tích độ xác thực giọng nói với mô hình AI ({idx + 1}/{total_specs})..."
+                )
+                input_tensor = spec.unsqueeze(0).to(device)
+                input_tensor = (input_tensor * imagenet_std) + imagenet_mean
+                input_tensor = (input_tensor - imagenet_mean) / imagenet_std
+
+                with torch.no_grad():
+                    out = model(input_tensor)
+                    score = torch.sigmoid(out).item()
+                    scores.append(score)
+                time.sleep(0.05)
+
+            progress_bar.progress(100, text="✅ Hoàn tất phân tích dữ liệu!")
+            time.sleep(0.35)
+            loading_placeholder.empty()
+
+            mean_score = sum(scores) / len(scores) if scores else 0.0
+            fake_score = 1.0 - mean_score
+            
+            st.markdown("### Kết Quả Phân Tích Giọng Nói")
+
+            # Result Banner Render
+            render_result_banner(mean_score)
+
+            # 3 Detailed Metrics Cards
+            m_col1, m_col2, m_col3 = st.columns(3)
+            with m_col1:
+                render_metric_card(f"{mean_score:.2%}", "Xác Suất Live Voice (Real)", value_color="#10b981")
+                
+            with m_col2:
+                render_metric_card(f"{fake_score:.2%}", "Xác Suất Replay Attack (Fake)", value_color="#ef4444")
+                
+            with m_col3:
+                render_metric_card(f"{total_duration:.1f}s", f"Thời Lượng ({len(specs)} Phân Đoạn)")
+
+        except Exception as e:
+            loading_placeholder.empty()
+            st.error(f"Lỗi hệ thống khi dự đoán: {str(e)}")

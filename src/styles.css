@@ -108,3 +108,22 @@ footer {
     border: 1px solid #e2e8f0;
     margin-bottom: 16px;
 }
+
+/* Custom Progress / Loading Bar */
+div[data-testid="stProgress"] > div > div > div > div {
+    background: linear-gradient(90deg, #38bdf8 0%, #6366f1 100%) !important;
+    border-radius: 8px !important;
+}
+
+div[data-testid="stProgress"] > div > div {
+    background-color: #e2e8f0 !important;
+    border-radius: 8px !important;
+    height: 12px !important;
+}
+
+div[data-testid="stProgress"] p {
+    font-size: 14px;
+    font-weight: 500;
+    color: #334155;
+}
+
