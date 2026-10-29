@@ -1,0 +1,14 @@
+[project]
+name = "phu-khac-anh-dep-trai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydub>=0.25.1",
+    "soundfile>=0.13.1",
+    "streamlit>=1.45.1",
+    "torch==2.7.0",
+    "torchaudio==2.7.0",
+    "torchvision==0.22.0",
+]
