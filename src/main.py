@@ -102,16 +102,20 @@ file_name = "audio.wav"
 
 with col_left:
     st.markdown("#### Chọn Phương Thức Thu Âm")
-    tab1, tab2 = st.tabs(["Ghi Âm Trực Tiếp", "Tải File Âm Thanh"])
+    input_mode = st.radio(
+        "Chọn phương thức cung cấp âm thanh:",
+        ["Ghi Âm Trực Tiếp", "Tải File Âm Thanh"],
+        horizontal=True,
+        label_visibility="collapsed",
+    )
     
-    with tab1:
+    if input_mode == "Ghi Âm Trực Tiếp":
         st.write("Nhấn vào biểu tượng Micro bên dưới để ghi âm câu thoại:")
         recorded_audio = st.audio_input("Bắt đầu ghi âm")
         if recorded_audio is not None:
             audio_source = recorded_audio
             file_name = getattr(recorded_audio, "name", "recorded_audio.wav")
-
-    with tab2:
+    else:
         st.write("Tải lên file âm thanh từ máy tính:")
         uploaded_file = st.file_uploader(
             "Định dạng hỗ trợ: .wav, .flac, .mp3, .m4a, .aac, .ogg, .webm",
