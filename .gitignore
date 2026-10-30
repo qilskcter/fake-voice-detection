@@ -185,10 +185,18 @@ cython_debug/
 # Data directories setup
 # ==========================================
 # Chặn tất cả nội dung trong fake và real
-data/fake/*
-data/real/*
+data/train/fake/*
+data/train/real/*
+data/val/fake/*
+data/val/real/*
+data/test/fake/*
+data/test/real/*
 
 # Giữ lại file .gitkeep để duy trì cấu trúc thư mục rỗng
-!data/fake/.gitkeep
-!data/real/.gitkeep
+!data/train/fake/.gitkeeps
+!data/train/real/.gitkeep
+!data/val/fake/.gitkeep
+!data/val/real/.gitkeep
+!data/test/fake/.gitkeep
+!data/test/real/.gitkeep
 .DS_Store
