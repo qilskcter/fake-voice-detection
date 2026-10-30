@@ -193,7 +193,7 @@ data/test/fake/*
 data/test/real/*
 
 # Giữ lại file .gitkeep để duy trì cấu trúc thư mục rỗng
-!data/train/fake/.gitkeeps
+!data/train/fake/.gitkeep
 !data/train/real/.gitkeep
 !data/val/fake/.gitkeep
 !data/val/real/.gitkeep
