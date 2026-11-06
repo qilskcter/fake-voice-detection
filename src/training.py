@@ -191,13 +191,27 @@ class AudioUtil:
 
     @staticmethod
     def pad_trunc(aud, max_ms):
-        """Cắt bớt nếu âm thanh dài hơn max_ms hoặc chèn thêm số 0 ngẫu nhiên nếu ngắn hơn."""
+        """
+        [Phương thức cũ / Thay thế]: Cắt bớt nếu âm thanh dài hơn max_ms hoặc chèn thêm số 0 ngẫu nhiên nếu ngắn hơn.
+        
+        Lưu ý: Kỹ thuật đệm số 0 (Zero-padding) ngẫu nhiên ở 2 đầu dễ khiến mô hình nhận diện
+        khoảng lặng nhân tạo làm dấu hiệu giả mạo thay vì học đặc trưng phổ âm giọng nói.
+        Trong pipeline hiện tại, `fix_length()` (lặp tín hiệu) được ưu tiên sử dụng thay thế.
+        
+        Tham số:
+            aud (tuple): Tuple gồm (tensor sóng âm [channels, samples], sample rate).
+            max_ms (int): Thời lượng tối đa tính bằng mili-giây (ví dụ: 2500 ms).
+        Trả về:
+            tuple: (tensor sóng âm đã chuẩn hóa độ dài, sample rate).
+        """
         sig, sr = aud
         num_rows, sig_len = sig.shape
-        max_len = sr // 1000 * max_ms
+        max_len = sr // 1000 * max_ms  # Số lượng mẫu tương ứng với max_ms
         if sig_len > max_len:
+            # Nếu tín hiệu dài hơn chuẩn: cắt lấy đúng max_len mẫu đầu tiên
             sig = sig[:, :max_len]
         elif sig_len < max_len:
+            # Nếu tín hiệu ngắn hơn chuẩn: sinh khoảng lặng (zeros) chèn ngẫu nhiên ở đầu và cuối
             pad_begin_len = random.randint(0, max_len - sig_len)
             pad_end_len = max_len - sig_len - pad_begin_len
             pad_begin = torch.zeros((num_rows, pad_begin_len))
@@ -399,7 +413,22 @@ def load_audio_paths(data_dir):
 
 
 def split_indices(labels, validation_split=0.2, seed=42):
-    """Chia chỉ số train/val cân bằng lớp (class-balanced) ngẫu nhiên."""
+    """
+    Chia chỉ số (indices) tập train/val theo phương pháp ngẫu nhiên nhưng đảm bảo cân bằng lớp (Class-balanced split).
+    
+    Quy trình:
+    1. Lấy danh sách index cho từng lớp nhãn (0: Fake, 1: Real).
+    2. Xáo trộn ngẫu nhiên danh sách index của từng lớp độc lập với seed cố định.
+    3. Tách đúng `validation_split` (ví dụ 20%) từ mỗi lớp đưa vào tập validation, phần còn lại vào train.
+    4. Trộn ngẫu nhiên lại toàn bộ index trước khi trả về.
+    
+    Tham số:
+        labels (list[int]): Danh sách nhãn (0 hoặc 1) của toàn bộ dữ liệu.
+        validation_split (float): Tỷ lệ dữ liệu dành cho validation (mặc định 0.2 = 20%).
+        seed (int): Seed ngẫu nhiên để đảm bảo tính tái lập kết quả.
+    Trả về:
+        tuple[list[int], list[int]]: (train_indices, validation_indices).
+    """
     rng = random.Random(seed)
     train_indices = []
     validation_indices = []
@@ -409,12 +438,14 @@ def split_indices(labels, validation_split=0.2, seed=42):
         if len(class_indices) < 2:
             raise ValueError("Each class needs at least two audio files for training")
         rng.shuffle(class_indices)
+        # Tính số lượng mẫu validation cho lớp hiện tại (ít nhất là 1 mẫu)
         validation_count = max(1, round(len(class_indices) * validation_split))
         if validation_count >= len(class_indices):
             validation_count = len(class_indices) - 1
         validation_indices.extend(class_indices[:validation_count])
         train_indices.extend(class_indices[validation_count:])
 
+    # Xáo trộn lại thứ tự sau khi ghép các lớp
     rng.shuffle(train_indices)
     rng.shuffle(validation_indices)
     return train_indices, validation_indices
@@ -423,8 +454,14 @@ def split_indices(labels, validation_split=0.2, seed=42):
 def speaker_of(path):
     """
     Bóc tách mã định danh người nói (Speaker ID) từ tên file.
-    Quy ước: Speaker ID là phần tử cuối cùng sau dấu gạch ngang '-' trong tên file.
-    Ví dụ: 'FAKE-XIN_CHAO-DAT.flac' -> ID là 'DAT'.
+    
+    Quy ước đặt tên file trong hệ thống:
+        <CLASS>-<UTTERANCE_ID>-<SPEAKER_ID>.flac
+    Ví dụ: 
+        'REAL-PA_T_0001234-PA_0083.flac'  -> Trả về 'PA_0083'
+        'FAKE-XIN_CHAO-DAT.flac'           -> Trả về 'DAT'
+    
+    Quy ước này là nền tảng để hàm `split_by_speaker()` phân chia tập dữ liệu độc lập người nói.
     """
     return Path(path).stem.split("-")[-1].upper()
 
@@ -432,23 +469,40 @@ def speaker_of(path):
 def split_by_speaker(paths, labels, val_speakers=None, validation_split=0.2, seed=42):
     """
     Chia train/val không trùng lặp người nói (Speaker-disjoint split).
-    Đảm bảo người nói có mặt trong tập validation thì tuyệt đối không xuất hiện trong tập train.
+    
+    Ý nghĩa kỹ thuật:
+    Nếu cùng một người nói xuất hiện ở cả tập Train và Validation, mô hình có thể ghi nhớ
+    đặc trưng chất giọng của người đó (Voice Identity) thay vì học cách phân biệt dấu hiệu
+    tấn công giả mạo (Replay / Spoof artifacts). Kỹ thuật này đảm bảo tính khách quan tối đa
+    khi đánh giá khả năng tổng quát hóa trên người nói hoàn toàn mới lạ.
+    
+    Tham số:
+        paths (list[Path]): Danh sách đường dẫn file âm thanh.
+        labels (list[int]): Danh sách nhãn tương ứng (0 hoặc 1).
+        val_speakers (list[str] | None): Danh sách tên người nói chỉ định làm validation (nếu có).
+        validation_split (float): Tỷ lệ số người nói dành cho validation nếu không chỉ định cụ thể.
+        seed (int): Seed ngẫu nhiên để xáo trộn danh sách người nói.
     """
     speakers = sorted({speaker_of(p) for p in paths})
     if val_speakers:
+        # Nếu người dùng tự truyền danh sách người nói làm val qua CLI
         val_set = {s.upper() for s in val_speakers}
         unknown = val_set - set(speakers)
         if unknown:
             raise ValueError(f"Unknown speakers: {sorted(unknown)}. Available: {speakers}")
     else:
+        # Tự động chọn ngẫu nhiên một tỷ lệ người nói làm validation
         rng = random.Random(seed)
         shuffled = speakers[:]
         rng.shuffle(shuffled)
         n_val = max(1, round(len(shuffled) * validation_split))
         val_set = set(shuffled[:n_val])
 
+    # Lọc file dựa trên việc Speaker ID có thuộc val_set hay không
     train_idx = [i for i, p in enumerate(paths) if speaker_of(p) not in val_set]
     val_idx = [i for i, p in enumerate(paths) if speaker_of(p) in val_set]
+
+    # Kiểm tra điều kiện tiên quyết: cả 2 tập đều phải chứa đủ cả mẫu Real (1) và Fake (0)
     for name, idx in (("train", train_idx), ("validation", val_idx)):
         if len({labels[i] for i in idx}) < 2:
             raise ValueError(f"The {name} split must contain both classes. Validation speakers: {sorted(val_set)}")
@@ -458,11 +512,19 @@ def split_by_speaker(paths, labels, val_speakers=None, validation_split=0.2, see
 
 def compute_eer(scores, labels):
     """
-    Tính toán tỷ lệ sai số cân bằng Equal Error Rate (EER).
-    labels: 1 = Real (lớp dương), 0 = Fake (lớp âm).
-    scores: Xác suất dự đoán thuộc lớp Real (từ 0.0 đến 1.0).
-    EER là điểm ngưỡng tại đó Tỷ lệ chấp nhận nhầm (FAR) = Tỷ lệ từ chối nhầm (FRR).
-    Giá trị EER càng thấp thì mô hình càng chính xác.
+    Tính toán tỷ lệ sai số cân bằng Equal Error Rate (EER) - Thước đo tiêu chuẩn trong ASVspoof.
+    
+    Nguyên lý:
+    - FAR (False Acceptance Rate / FPR): Tỷ lệ mẫu Fake bị đoán nhầm thành Real (Lọt lưới).
+    - FRR (False Rejection Rate / FNR): Tỷ lệ mẫu Real bị đoán nhầm thành Fake (Chặn nhầm).
+    - Khi thay đổi ngưỡng quyết định (threshold) từ 0 đến 1: FAR giảm dần còn FRR tăng dần.
+    - EER là điểm mà tại đó FAR = FRR. Giá trị EER càng nhỏ (gần 0%) thể hiện mô hình càng xuất sắc.
+    
+    Tham số:
+        scores (list[float] | np.ndarray): Xác suất dự đoán thuộc lớp Real (từ 0.0 đến 1.0).
+        labels (list[int] | np.ndarray): Nhãn thực tế (1: Real, 0: Fake).
+    Trả về:
+        float: Giá trị EER (trong khoảng [0.0, 1.0]).
     """
     s = np.asarray(scores, dtype=float)
     y = np.asarray(labels, dtype=int)
@@ -470,13 +532,17 @@ def compute_eer(scores, labels):
     if pos == 0 or neg == 0:
         return float("nan")
 
-    # Sắp xếp điểm số theo thứ tự giảm dần
+    # Sắp xếp nhãn thực tế theo thứ tự xác suất dự đoán giảm dần
     y = y[np.argsort(-s)]
-    tpr = np.cumsum(y) / pos          # True Positive Rate
-    fpr = np.cumsum(1 - y) / neg      # False Positive Rate (FAR)
-    fnr = 1 - tpr                     # False Negative Rate (FRR)
-    # Tìm vị trí ngưỡng mà chênh lệch giữa FNR và FPR là nhỏ nhất
+    
+    # Tính tích lũy True Positives và False Positives bằng numpy cumsum
+    tpr = np.cumsum(y) / pos          # TPR = TP / Total_Positives (Recall)
+    fpr = np.cumsum(1 - y) / neg      # FPR = FP / Total_Negatives (FAR)
+    fnr = 1 - tpr                     # FNR = FN / Total_Positives (FRR)
+    
+    # Tìm chỉ số k mà tại đó hiệu tuyệt đối giữa FNR và FPR đạt cực tiểu (|FNR - FPR| nhỏ nhất)
     k = int(np.argmin(np.abs(fnr - fpr)))
+    # Lấy trung bình cộng giữa FNR[k] và FPR[k] làm giá trị xấp xỉ EER
     return float((fnr[k] + fpr[k]) / 2)
 
 
@@ -500,8 +566,27 @@ def evaluate(
     threshold=0.5,
 ):
     """
-    Đánh giá một checkpoint mô hình đã huấn luyện trên tập chỉ định (mặc định là data/test).
-    Tính toán chi tiết: EER, Accuracy, Precision, Recall, F1-Score, FAR, FRR, Ma trận nhầm lẫn.
+    Đánh giá một checkpoint mô hình đã huấn luyện trên tập dữ liệu chỉ định (mặc định là data/test).
+    
+    Quy trình tính toán:
+    1. Tải checkpoint mô hình đã lưu và chuyển sang chế độ suy luận (`model.eval()`).
+    2. Nạp dữ liệu với chế độ gốc (`mode="original"`, `train=False`), không tăng cường hay cắt ngẫu nhiên.
+    3. Đưa qua mạng CRNN -> hàm Sigmoid để thu được xác suất thuộc lớp Real (p ∈ [0, 1]).
+    4. So sánh với `threshold` (ngưỡng phân loại) để phân loại nhị phân và lập ma trận nhầm lẫn (Confusion Matrix):
+       - True Positive (TP): Giọng thật được nhận diện đúng là thật.
+       - False Positive (FP): Giọng giả mạo bị nhận diện nhầm thành thật (Lọt lưới - FAR).
+       - False Negative (FN): Giọng thật bị từ chối oan thành giả (Bị chặn oan - FRR).
+       - True Negative (TN): Giọng giả mạo bị chặn đúng là giả.
+    5. Tính các chỉ số đánh giá: Accuracy, Precision, Recall, F1-Score, FAR, FRR và EER (Equal Error Rate).
+    
+    Tham số:
+        model_path (str): Đường dẫn tới file trọng số .pth của mô hình.
+        data_dir (str): Đường dẫn thư mục dữ liệu gốc (chứa các thư mục con như train, val, test).
+        split (str): Tên tập cần đánh giá (ví dụ: 'test', 'val' hoặc 'train').
+        batch_size (int): Số lượng mẫu trong mỗi mini-batch khi suy luận.
+        threshold (float): Ngưỡng quyết định để gán nhãn Real (mặc định: 0.5).
+    Trả về:
+        dict: Từ điển chứa đầy đủ các chỉ số đánh giá và giá trị ma trận nhầm lẫn.
     """
     split_dir = Path(data_dir) / split
     # Nạp đường dẫn file và nhãn từ thư mục split (ví dụ: data/test/real và data/test/fake)
@@ -510,7 +595,7 @@ def evaluate(
     ds = SoundDS(paths, labels, mode="original", train=False)
     loader = DataLoader(ds, batch_size=batch_size, shuffle=False)
 
-    # Chọn thiết bị phần cứng tối ưu nhất
+    # Chọn thiết bị phần cứng tối ưu nhất (ưu tiên GPU CUDA > Apple Silicon MPS > CPU)
     if torch.cuda.is_available():
         device = torch.device("cuda")
     elif torch.backends.mps.is_available():
@@ -525,38 +610,39 @@ def evaluate(
     # Khởi tạo mô hình và nạp trọng số đã lưu
     model = CRNNWithAttn(pretrained=False).to(device)
     model.load_state_dict(torch.load(checkpoint, map_location=device, weights_only=True))
-    model.eval()  # Chuyển sang chế độ đánh giá (tắt Dropout)
+    model.eval()  # Chuyển sang chế độ đánh giá (tắt Dropout và cố định BatchNorm)
 
     all_scores, all_targets = [], []
     tp, fp, fn, tn = 0, 0, 0, 0
 
     print(f"\n[EVALUATION] Đang đánh giá checkpoint '{checkpoint.name}' trên tập {split.upper()} ({len(paths)} mẫu)...")
-    with torch.no_grad():  # Tắt tính đạo hàm để tiết kiệm RAM và tăng tốc suy luận
+    with torch.no_grad():  # Tắt tính toán gradient để tối ưu bộ nhớ VRAM và tăng tốc độ suy luận
         for features, target in loader:
-            # Đưa đặc trưng qua mô hình -> áp dụng Sigmoid để ra xác suất lớp Real [0, 1]
+            # Đưa đặc trưng qua mô hình -> áp dụng Sigmoid để tính xác suất lớp Real [0.0, 1.0]
             prob = torch.sigmoid(model(features.to(device))).squeeze(1).cpu()
             all_scores.extend(prob.tolist())
             all_targets.extend(target.tolist())
 
             preds = prob >= threshold  # Xác suất >= ngưỡng (0.5) kết luận là Real (1), ngược lại Fake (0)
             target_bool = target.bool()
-            # Cập nhật số lượng ma trận nhầm lẫn:
+            
+            # Cập nhật số lượng các ô trong ma trận nhầm lẫn:
             tp += ((preds == 1) & (target_bool == 1)).sum().item()  # Thật đoán đúng là Thật
-            fp += ((preds == 1) & (target_bool == 0)).sum().item()  # Giả đoán nhầm thành Thật (Bị lừa)
-            fn += ((preds == 0) & (target_bool == 1)).sum().item()  # Thật đoán nhầm thành Giả (Chặn nhầm)
+            fp += ((preds == 1) & (target_bool == 0)).sum().item()  # Giả đoán nhầm thành Thật (Bị lừa / Lọt lưới)
+            fn += ((preds == 0) & (target_bool == 1)).sum().item()  # Thật đoán nhầm thành Giả (Bị chặn oan)
             tn += ((preds == 0) & (target_bool == 0)).sum().item()  # Giả đoán đúng là Giả
 
-    # Tính toán các chỉ số thống kê
+    # Tính toán các chỉ số thống kê hiệu năng
     total = tp + fp + fn + tn
-    acc = (tp + tn) / total if total else 0.0                     # Độ chính xác tổng quan
-    precision = tp / (tp + fp) if (tp + fp) else 0.0             # Độ chuẩn xác lớp Real
-    recall = tp / (tp + fn) if (tp + fn) else 0.0                # Độ nhạy (tỷ lệ bắt trọn người thật)
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
-    far = fp / (fp + tn) if (fp + tn) else 0.0                   # False Acceptance Rate (Tỷ lệ lọt lưới)
-    frr = fn / (fn + tp) if (fn + tp) else 0.0                   # False Rejection Rate (Tỷ lệ từ chối oan)
-    eer = compute_eer(all_scores, all_targets)                   # Chỉ số EER độc lập với ngưỡng
+    acc = (tp + tn) / total if total else 0.0                     # Tỷ lệ dự đoán đúng trên toàn bộ mẫu
+    precision = tp / (tp + fp) if (tp + fp) else 0.0             # Trong các mẫu dự đoán là Real, có bao nhiêu % thực sự là Real
+    recall = tp / (tp + fn) if (tp + fn) else 0.0                # Trong các mẫu Real thực tế, mô hình nhận diện được bao nhiêu %
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0  # Trung bình điều hòa giữa Precision và Recall
+    far = fp / (fp + tn) if (fp + tn) else 0.0                   # False Acceptance Rate: Tỷ lệ mẫu Fake bị lọt lưới chấp nhận nhầm
+    frr = fn / (fn + tp) if (fn + tp) else 0.0                   # False Rejection Rate: Tỷ lệ người thật bị hệ thống từ chối oan
+    eer = compute_eer(all_scores, all_targets)                   # Equal Error Rate: Thước đo khách quan độc lập với ngưỡng phân loại
 
-    # In kết quả rõ ràng ra màn hình console
+    # In kết quả chi tiết ra màn hình console
     print(f"Results on {split.upper()} set:")
     print(f"  EER      : {eer:.2%}")
     print(f"  Accuracy : {acc:.2%}")
@@ -600,10 +686,41 @@ def train(
     eval_test=True,
 ):
     """
-    Quy trình huấn luyện mô hình phân loại Live Voice (Real: 1) vs Replay Attack (Fake: 0).
-    Hỗ trợ 2 kịch bản:
-    1. Cấu trúc thư mục mới đã chia sẵn: data/train, data/val, data/test (Khuyên dùng).
-    2. Cấu trúc cũ: data/fake, data/real (Tự động chia theo người nói).
+    Quy trình huấn luyện hoàn chỉnh mô hình phân loại Live Voice (Real: 1) vs Replay Attack (Fake: 0).
+    
+    Quy trình hoạt động:
+    1. Kiểm tra cấu trúc dữ liệu:
+       - Kịch bản 1 (Mặc định): Đã chia sẵn theo chuẩn cuộc thi thành data/train, data/val, data/test.
+       - Kịch bản 2: Dữ liệu phẳng (data/fake và data/real) -> Tự động chia theo người nói (Speaker-disjoint).
+    2. Cài đặt Data Pipeline:
+       - Train Dataset: Kích hoạt tăng cường dữ liệu hỗn hợp (`mode="combined"` gồm time shift, add noise, SpecAugment) 
+         và cắt ngẫu nhiên 2.5s (`random_crop=True`).
+       - Val Dataset: Giữ nguyên tín hiệu gốc (`mode="original"`), cắt đoạn chính giữa (`random_crop=False`).
+    3. Cân bằng trọng số lớp (Imbalanced Data Handling):
+       - Vì số lượng mẫu Fake thường áp đảo Real (khoảng 7:1), tính `pos_weight = N_fake / N_real` để phạt nặng hơn
+         khi mô hình đoán nhầm mẫu người thật (Real).
+    4. Thiết lập Optimizer & Scheduler:
+       - `AdamW`: Tối ưu hóa gradient với phân rã trọng số `weight_decay=1e-4` độc lập, chống overfit hiệu quả.
+       - `CosineAnnealingLR`: Giảm tốc độ học từ từ theo đường cong Cosine mượt mà.
+    5. Vòng lặp Epochs:
+       - Huấn luyện trên từng batch, lan truyền ngược cập nhật trọng số.
+       - Kiểm định trên tập Validation: Tính Accuracy, Precision, Recall, F1 và EER.
+       - Lưu lại checkpoint có chỉ số EER thấp nhất (`best_eer`).
+    6. Tự động đánh giá trên tập Test độc lập sau khi kết thúc quá trình huấn luyện.
+    
+    Tham số:
+        data_dir (str): Đường dẫn thư mục chứa dữ liệu (mặc định: 'data').
+        model_path (str | None): Nơi lưu checkpoint mô hình tốt nhất (mặc định: 'models/best_crnn.pth').
+        epochs (int): Tổng số chu kỳ huấn luyện qua toàn bộ dữ liệu.
+        batch_size (int): Kích thước lô mẫu cho mỗi lượt tính đạo hàm.
+        learning_rate (float): Tốc độ học ban đầu cho bộ tối ưu AdamW.
+        validation_split (float): Tỷ lệ validation nếu dữ liệu ở dạng phẳng chưa chia sẵn.
+        val_speakers (list[str] | None): Danh sách tên người nói chỉ định riêng cho tập validation.
+        seed (int): Hạt giống ngẫu nhiên để cố định kết quả thực nghiệm.
+        reset_model (bool): Nếu True, bỏ qua checkpoint cũ và huấn luyện mới hoàn toàn từ trọng số ImageNet.
+        final (bool): Nếu True, huấn luyện trên 100% dữ liệu (không cần validation) để đóng gói ứng dụng.
+        save (bool): Nếu True, cho phép ghi đè lưu checkpoint mô hình lên đĩa cứng.
+        eval_test (bool): Nếu True, tự động gọi hàm `evaluate()` trên tập Test sau khi train xong.
     """
     # Cố định seed ngẫu nhiên để mọi lần chạy đều cho kết quả giống nhau
     torch.manual_seed(seed)
@@ -704,16 +821,17 @@ def train(
             features = features.to(device)
             target = target.float().unsqueeze(1).to(device)
 
-            optimizer.zero_grad()               # Xóa gradient cũ
-            loss = criterion(model(features), target)  # Tính hàm mất mát
-            loss.backward()                     # Lan truyền ngược (backpropagation) tính đạo hàm
-            optimizer.step()                    # Cập nhật trọng số mạng
+            optimizer.zero_grad()                      # 1. Xóa gradient tích lũy của batch trước
+            logits = model(features)                   # 2. Lan truyền tiến (Forward pass) qua mạng CRNN
+            loss = criterion(logits, target)           # 3. Tính hàm mất mát BCEWithLogitsLoss có trọng số phạt pos_weight
+            loss.backward()                            # 4. Lan truyền ngược (Backpropagation) tính gradient
+            optimizer.step()                           # 5. Cập nhật trọng số mạng theo thuật toán AdamW
             train_loss += loss.item() * features.size(0)
 
         average_loss = train_loss / n_train_total
-        scheduler.step()                        # Cập nhật learning rate
+        scheduler.step()                               # 6. Điều chỉnh learning rate theo lịch trình CosineAnnealingLR
 
-        # Nếu đang ở chế độ final (train toàn bộ data để build app) thì chỉ lưu epoch cuối
+        # Nếu đang ở chế độ final (huấn luyện trên 100% dữ liệu để đóng gói app) thì chỉ lưu epoch cuối
         if final:
             print(f"Epoch {epoch + 1:02d}/{epochs:02d} | Loss: {average_loss:.4f}")
             if save:
@@ -721,11 +839,11 @@ def train(
             continue
 
         # ĐÁNH GIÁ TRÊN TẬP VALIDATION SAU MỖI EPOCH
-        model.eval()  # Chuyển sang chế độ đánh giá
+        model.eval()  # Chuyển sang chế độ đánh giá (tắt Dropout và cố định BatchNorm)
         tp, fp, fn, tn = 0, 0, 0, 0
         all_scores, all_targets = [], []
 
-        with torch.no_grad():
+        with torch.no_grad():  # Tắt autograd để tiết kiệm bộ nhớ và tăng tốc độ kiểm thử
             for features, target in validation_loader:
                 prob = torch.sigmoid(model(features.to(device))).squeeze(1).cpu()
                 all_scores.extend(prob.tolist())
@@ -757,6 +875,7 @@ def train(
         )
 
         # CƠ CHẾ LƯU CHECKPOINT TỐT NHẤT:
+        # Tiêu chuẩn ASVspoof lấy EER làm thước đo vàng.
         # Nếu chỉ số EER của epoch này thấp hơn kỷ lục trước đó -> Lưu ngay trọng số mô hình
         if save and eer < best_eer:
             best_eer = eer
@@ -778,16 +897,27 @@ def train(
 # ==============================================================================
 def cross_validate(data_dir="data", min_per_class=5, **kwargs):
     """
-    Kiểm định chéo loại trừ một người nói (Leave-one-speaker-out cross-validation).
-    Mỗi người nói sẽ lần lượt được chọn làm tập validation 1 lần, các người khác làm train.
-    Dùng để đánh giá độ tổng quát hóa tuyệt đối khi không muốn thiên vị bất kỳ người nói nào.
+    Kiểm định chéo loại trừ một người nói (Leave-One-Speaker-Out Cross-Validation - LOSO-CV).
+    
+    Nguyên lý:
+    - Trong mỗi fold (lượt kiểm tra), hệ thống giữ lại toàn bộ audio của 1 người nói (Speaker) làm tập Validation.
+    - Tất cả các người nói còn lại được đưa vào tập Train.
+    - Quá trình lặp lại tuần tự cho tất cả người nói đủ điều kiện.
+    - Cuối cùng, tính trung bình cộng EER và Accuracy trên tất cả các fold.
+    - Đây là phương pháp nghiêm ngặt nhất để kiểm tra khả năng khái quát hóa và độ chống chịu overfit
+      của mô hình đối với người dùng hoàn toàn mới ngoài thực tế.
+    
+    Tham số:
+        data_dir (str): Đường dẫn thư mục chứa dữ liệu.
+        min_per_class (int): Số lượng file tối thiểu của mỗi lớp (Fake và Real) mà người nói đó phải có để được chọn làm 1 fold.
+        **kwargs: Các đối số truyền tiếp vào hàm `train()` (epochs, batch_size, learning_rate,...).
     """
     import statistics
     paths, labels = load_audio_paths(data_dir)
     counts = {}
     for pth, lab in zip(paths, labels):
         counts.setdefault(speaker_of(pth), [0, 0])[lab] += 1
-    # Chỉ chọn các người nói có đủ số lượng mẫu tối thiểu cho cả 2 lớp
+    # Chỉ chọn các người nói có đủ số lượng mẫu tối thiểu cho cả 2 lớp (Real >= min_per_class và Fake >= min_per_class)
     eligible = [s for s, (fake, real) in sorted(counts.items()) if min(fake, real) >= min_per_class]
     print(f"Speakers (fake, real): {counts}")
     print(f"Held-out folds: {eligible}")
@@ -795,13 +925,15 @@ def cross_validate(data_dir="data", min_per_class=5, **kwargs):
         raise ValueError("No speaker has enough clips of both classes. Lower --min-per-class or add data.")
 
     results = {}
+    # Lần lượt chọn từng người nói làm tập validation độc lập
     for spk in eligible:
         print(f"\n===== Fold: hold out {spk} =====")
         results[spk] = train(data_dir=data_dir, val_speakers=[spk], reset_model=True, save=False, **kwargs)
 
+    # Tổng kết hiệu năng trên toàn bộ các fold kiểm định chéo
     print("\n===== Leave-one-speaker-out summary (last epoch) =====")
     for spk, (eer, acc) in results.items():
-        print(f"{spk:>8}: EER {eer:.2%} | Acc {acc:.2%}")
+        print(f"{spk:>8}: EER {eer:.2%}| Acc {acc:.2%}")
     eers = [e for e, _ in results.values()]
     accs = [a for _, a in results.values()]
     print(f"    MEAN: EER {statistics.mean(eers):.2%} | Acc {statistics.mean(accs):.2%}")
@@ -811,18 +943,18 @@ def cross_validate(data_dir="data", min_per_class=5, **kwargs):
 # 9. ĐIỂM VÀO DÒNG LỆNH (MAIN ENTRY POINT)
 # ==============================================================================
 if __name__ == "__main__":
-    # Khai báo các đối số dòng lệnh để người dùng dễ dàng tùy chỉnh khi chạy python
-    parser = argparse.ArgumentParser(description="Train and evaluate the fake/real audio classifier")
+    # Khai báo các cờ tham số dòng lệnh (CLI options)
+    parser = argparse.ArgumentParser(description="Huấn luyện và đánh giá mô hình phân loại Live Voice vs Replay Attack")
     parser.add_argument("--data-dir", default="data", help="Thư mục chứa dữ liệu (mặc định: data)")
     parser.add_argument("--model-path", default=None, help="Đường dẫn lưu checkpoint (mặc định: models/best_crnn.pth)")
-    parser.add_argument("--epochs", type=int, default=15, help="Số lượt huấn luyện qua dữ liệu (epochs)")
-    parser.add_argument("--batch-size", type=int, default=16, help="Kích thước lô mẫu nạp vào mỗi lần (batch size)")
-    parser.add_argument("--learning-rate", type=float, default=1e-4, help="Tốc độ học của Optimizer AdamW")
-    parser.add_argument("--validation-split", type=float, default=0.2, help="Tỷ lệ người nói làm validation (cho chế độ cũ)")
+    parser.add_argument("--epochs", type=int, default=15, help="Số lượt huấn luyện qua dữ liệu (epochs, mặc định: 15)")
+    parser.add_argument("--batch-size", type=int, default=16, help="Kích thước lô mẫu nạp vào mỗi lần (batch size, mặc định: 16)")
+    parser.add_argument("--learning-rate", type=float, default=1e-4, help="Tốc độ học của Optimizer AdamW (mặc định: 1e-4)")
+    parser.add_argument("--validation-split", type=float, default=0.2, help="Tỷ lệ người nói làm validation cho chế độ dữ liệu phẳng (mặc định: 0.2)")
     parser.add_argument("--val-speakers", type=lambda v: v.split(","), default=None, help="Chỉ định danh sách người nói làm val (ví dụ: DAT,QUANG)")
     parser.add_argument("--reset-model", action="store_true", help="Bỏ qua checkpoint cũ, huấn luyện lại từ đầu với trọng số ImageNet mới")
     parser.add_argument("--cv", action="store_true", help="Bật chế độ kiểm định chéo tự động leave-one-speaker-out")
-    parser.add_argument("--min-per-class", type=int, default=5, help="Số file tối thiểu của 1 người nói để được chọn làm fold kiểm định chéo")
+    parser.add_argument("--min-per-class", type=int, default=5, help="Số file tối thiểu của 1 người nói để được chọn làm fold kiểm định chéo (mặc định: 5)")
     parser.add_argument("--final", action="store_true", help="Huấn luyện trên 100% dữ liệu để đóng gói thành model chạy ứng dụng")
     parser.add_argument("--eval-only", default=None, metavar="SPLIT",
                         help="Chỉ chấm điểm checkpoint có sẵn trên tập data/<SPLIT> (ví dụ: test hoặc val), không huấn luyện")
@@ -836,7 +968,7 @@ if __name__ == "__main__":
 
     # Phân luồng thực thi dựa trên cờ tham số người dùng nhập vào
     if eval_only:
-        # Nếu có cờ --eval-only: Chỉ chạy hàm đánh giá, in kết quả rồi kết thúc
+        # 1. Chế độ chỉ đánh giá (Evaluation Only)
         evaluate(
             model_path=args.get("model_path") or "models/best_crnn.pth",
             data_dir=args.get("data_dir", "data"),
@@ -844,10 +976,10 @@ if __name__ == "__main__":
             batch_size=args.get("batch_size", 16),
         )
     elif cv:
-        # Nếu có cờ --cv: Chạy kiểm định chéo Leave-one-speaker-out
+        # 2. Chế độ kiểm định chéo người nói (Cross-Validation)
         for k in ("val_speakers", "reset_model", "final", "validation_split"):
             args.pop(k)
         cross_validate(min_per_class=min_per_class, **args)
     else:
-        # Mặc định: Chạy quy trình huấn luyện tiêu chuẩn (và tự test ở cuối nếu có tập test)
+        # 3. Chế độ huấn luyện tiêu chuẩn (Train và tự động Evaluate trên tập Test)
         train(eval_test=not no_eval_test, **args)

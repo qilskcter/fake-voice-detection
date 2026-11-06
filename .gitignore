@@ -200,3 +200,4 @@ data/test/real/*
 !data/test/fake/.gitkeep
 !data/test/real/.gitkeep
 .DS_Store
+/data/demo

@@ -121,12 +121,13 @@ class CRNNWithAttn(nn.Module):
         else:
             resnet = models.resnet18()
 
-        # ResNet18 gốc được thiết kế cho ảnh màu RGB (3 kênh).
+        # ResNet18 gốc được thiết kế cho ảnh màu RGB (3 kênh: Red, Green, Blue).
         # Ảnh phổ Mel-Spectrogram chỉ có 1 kênh (Mono đen trắng).
-        # Ta sao chép trọng số của kênh đầu tiên để khởi tạo lớp Conv1 1-kênh mới:
+        # Thay vì chỉ sao chép kênh đỏ (làm mất 2/3 tri thức học trước), ta tính trung bình cộng
+        # trọng số của cả 3 kênh RGB để gộp thành 1 kênh, bảo toàn trọn vẹn đặc trưng đã học:
         w = resnet.conv1.weight.data.clone()
         resnet.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        resnet.conv1.weight.data[:, 0] = w[:, 0]
+        resnet.conv1.weight.data = w.mean(dim=1, keepdim=True)
 
         # Cắt bỏ 2 tầng cuối cùng của ResNet18 gốc (tầng AvgPool và Linear FC)
         # Giữ lại toàn bộ các khối Residual trích xuất đặc trưng sâu:
